@@ -22,7 +22,7 @@ defmodule Protox.DefineDecoder do
         rescue
           Protox.IllegalTagError -> {:error, :illegal_tag}
           e in Protox.RequiredFieldsError -> {:error, {:missing_fields, e.missing_fields}}
-          e in Protox.DecodingError -> {:error, {e.reason, e.binary}}
+          e in Protox.DecodingError -> {:error, e.reason}
           e -> {:error, e}
         end
       end
@@ -69,7 +69,7 @@ defmodule Protox.DefineDecoder do
           {msg, unquote(set_fields_var)}
         end
 
-        defp parse_key_value(unquote(set_fields_var), bytes, msg) do
+        defp parse_key_value(unquote(set_fields_var), <<bytes::bits>>, msg) do
           unquote(parse_key_value)
         end
       end
@@ -78,7 +78,7 @@ defmodule Protox.DefineDecoder do
         @spec parse_key_value(binary, struct) :: struct
         defp parse_key_value(<<>>, msg), do: msg
 
-        defp parse_key_value(bytes, msg), do: unquote(parse_key_value)
+        defp parse_key_value(<<bytes::bits>>, msg), do: unquote(parse_key_value)
       end
     end
   end
@@ -237,8 +237,8 @@ defmodule Protox.DefineDecoder do
 
     quote do
       {unquote(tag), unquote(wire_type), unquote(bytes_var)} ->
-        {len, unquote(bytes_var)} = Protox.Varint.decode(unquote(bytes_var))
-        <<unquote(delimited_var)::binary-size(len), rest::binary>> = unquote(bytes_var)
+        {len, unquote(bytes_var)} = Protox.Decode.decode_varint(unquote(bytes_var))
+        <<unquote(delimited_var)::binary-size(len), rest::bits>> = unquote(bytes_var)
         unquote(value_var) = unquote(parse_delimited)
         unquote(field_var) = unquote(update_field)
         unquote(case_return)
@@ -515,8 +515,8 @@ defmodule Protox.DefineDecoder do
 
     parse_delimited =
       quote do
-        {len, new_rest} = Protox.Varint.decode(unquote(bytes_var))
-        <<unquote(delimited_var)::binary-size(len), new_rest::binary>> = new_rest
+        {len, new_rest} = Protox.Decode.decode_varint(unquote(bytes_var))
+        <<unquote(delimited_var)::binary-size(len), new_rest::bits>> = new_rest
         {unquote(make_parse_delimited(delimited_var, type)), new_rest}
       end
 

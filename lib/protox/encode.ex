@@ -11,9 +11,14 @@ defmodule Protox.Encode do
   }
 
   alias Protox.{
-    Varint,
     Zigzag
   }
+
+  @compile {:inline, encode_varint: 1}
+
+  @spec encode_varint(integer) :: iodata
+  def encode_varint(v) when v < 128, do: <<v>>
+  def encode_varint(v), do: [<<1::1, v::7>>, encode_varint(v >>> 7)]
 
   @spec encode(struct) :: {:ok, iodata} | {:error, any}
   def encode(msg) do
@@ -31,7 +36,7 @@ defmodule Protox.Encode do
 
   @spec make_key_bytes(Protox.Types.tag(), Protox.Types.type()) :: iodata
   def make_key_bytes(tag, ty) do
-    Varint.encode(make_key(tag, ty))
+    encode_varint(make_key(tag, ty))
   end
 
   @spec make_key(Protox.Types.tag(), Protox.Types.type()) :: non_neg_integer
@@ -46,13 +51,13 @@ defmodule Protox.Encode do
 
   @spec encode_varint_signed(integer) :: iodata
   def encode_varint_signed(value) do
-    value |> Zigzag.encode() |> Varint.encode()
+    value |> Zigzag.encode() |> encode_varint()
   end
 
   @spec encode_varint_64(integer) :: iodata
   def encode_varint_64(value) do
     <<res::unsigned-native-64>> = <<value::signed-native-64>>
-    Varint.encode(res)
+    encode_varint(res)
   end
 
   @spec encode_varint_32(integer) :: iodata
@@ -62,7 +67,7 @@ defmodule Protox.Encode do
 
   def encode_varint_32(value) do
     <<res::unsigned-native-32>> = <<value::signed-native-32>>
-    Varint.encode(res)
+    encode_varint(res)
   end
 
   @spec encode_bool(boolean) :: binary
@@ -116,17 +121,17 @@ defmodule Protox.Encode do
 
   @spec encode_string(String.t()) :: iodata
   def encode_string(value) do
-    [Varint.encode(byte_size(value)), value]
+    [encode_varint(byte_size(value)), value]
   end
 
   @spec encode_bytes(binary) :: iodata
   def encode_bytes(value) do
-    [Varint.encode(byte_size(value)), value]
+    [encode_varint(byte_size(value)), value]
   end
 
   @spec encode_message(struct) :: iodata
   def encode_message(value) do
     encoded = value |> encode!() |> :binary.list_to_bin()
-    [Varint.encode(byte_size(encoded)), encoded]
+    [encode_varint(byte_size(encoded)), encoded]
   end
 end

@@ -209,7 +209,9 @@ defmodule Protox.DefineEncoder do
         map_value_value_len = byte_size(map_value_value_bytes)
 
         len =
-          Protox.Varint.encode(unquote(map_keys_len) + map_key_value_len + map_value_value_len)
+          Protox.Encode.encode_varint(
+            unquote(map_keys_len) + map_key_value_len + map_value_value_len
+          )
 
         [
           acc,
@@ -236,7 +238,7 @@ defmodule Protox.DefineEncoder do
               [acc, Protox.Encode.make_key_bytes(tag, :double), bytes]
 
             2 ->
-              len_bytes = bytes |> byte_size() |> Protox.Varint.encode()
+              len_bytes = bytes |> byte_size() |> Protox.Encode.encode_varint()
               [acc, Protox.Encode.make_key_bytes(tag, :packed), len_bytes, bytes]
 
             5 ->
@@ -258,7 +260,7 @@ defmodule Protox.DefineEncoder do
           {[acc, value_bytes], len + byte_size(value_bytes)}
         end)
 
-      [Protox.Varint.encode(len), bytes]
+      [Protox.Encode.encode_varint(len), bytes]
     end
   end
 

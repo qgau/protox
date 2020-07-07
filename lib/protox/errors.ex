@@ -29,13 +29,11 @@ defmodule Protox.DecodingError do
   """
 
   defexception message: "Could not decode data",
-               binary: <<>>,
                reason: nil
 
-  def new(reason, binary) do
+  def new(reason) do
     %__MODULE__{
-      message: "Could not decode data #{inspect(binary)}",
-      binary: binary,
+      message: "Could not decode data",
       reason: reason
     }
   end

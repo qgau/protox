@@ -1003,7 +1003,7 @@ defmodule Protox.DecodeTest do
   end
 
   test "Decode dummy varint data returns an error" do
-    assert {:error, {:varint, _}} = Empty.decode(<<255, 255, 255, 255>>)
+    assert {:error, :varint} = Empty.decode(<<255, 255, 255, 255>>)
   end
 
   test "Decode! dummy varint data raises DecodingError" do

@@ -10,7 +10,6 @@ defmodule Protox.Decode do
   }
 
   alias Protox.{
-    Varint,
     Zigzag
   }
 
@@ -28,198 +27,220 @@ defmodule Protox.Decode do
             parse_fixed32: 1,
             parse_sfixed32: 1,
             parse_fixed64: 1,
-            parse_sfixed64: 1}
+            parse_sfixed64: 1,
+            decode_varint: 1,
+            do_decode_varint: 3}
+
+  @spec decode_varint(binary) :: {non_neg_integer, binary}
+  def decode_varint(bytes), do: do_decode_varint(0, 0, bytes)
+
+  @spec do_decode_varint(non_neg_integer, non_neg_integer, binary) :: {non_neg_integer, binary}
+  defp do_decode_varint(result, shift, <<0::1, byte::7, rest::bits>>) do
+    {result ||| byte <<< shift, rest}
+  end
+
+  defp do_decode_varint(result, shift, <<1::1, byte::7, rest::bits>>) do
+    do_decode_varint(
+      result ||| byte <<< shift,
+      shift + 7,
+      rest
+    )
+  end
+
+  defp do_decode_varint(_result, _shift, _binary) do
+    raise Protox.DecodingError.new(:varint)
+  end
 
   # Get the key's tag and wire type.
   @spec parse_key(binary) :: {non_neg_integer, non_neg_integer, binary}
-  def parse_key(bytes) do
-    {key, rest} = Varint.decode(bytes)
+  def parse_key(<<bytes::bits>>) do
+    {key, rest} = decode_varint(bytes)
     {key >>> 3, key &&& 0b111, rest}
   end
 
-  def parse_unknown(tag, @wire_varint, bytes) do
-    {unknown_bytes, rest} = get_unknown_varint_bytes(<<>>, bytes)
+  def parse_unknown(tag, @wire_varint, <<bytes::bits>>) do
+    {unknown_bytes, rest} = get_unknown_varint_bytes(<<>>, <<bytes::bits>>)
     {{tag, @wire_varint, unknown_bytes}, rest}
   end
 
-  def parse_unknown(tag, @wire_64bits, <<unknown_bytes::64, rest::binary>>) do
+  def parse_unknown(tag, @wire_64bits, <<unknown_bytes::64, rest::bits>>) do
     {{tag, @wire_64bits, <<unknown_bytes::64>>}, rest}
   end
 
-  def parse_unknown(tag, @wire_delimited, bytes) do
-    {len, new_bytes} = Varint.decode(bytes)
-    <<unknown_bytes::binary-size(len), rest::binary>> = new_bytes
+  def parse_unknown(tag, @wire_delimited, <<bytes::bits>>) do
+    {len, new_bytes} = decode_varint(bytes)
+    <<unknown_bytes::binary-size(len), rest::bits>> = new_bytes
     {{tag, @wire_delimited, unknown_bytes}, rest}
   end
 
-  def parse_unknown(tag, @wire_32bits, <<unknown_bytes::32, rest::binary>>) do
+  def parse_unknown(tag, @wire_32bits, <<unknown_bytes::32, rest::bits>>) do
     {{tag, @wire_32bits, <<unknown_bytes::32>>}, rest}
   end
 
-  defp get_unknown_varint_bytes(acc, <<0::1, b::7, rest::binary>>) do
-    {<<acc::binary, 0::1, b::7>>, rest}
+  defp get_unknown_varint_bytes(acc, <<0::1, b::7, rest::bits>>) do
+    {<<acc::bits, 0::1, b::7>>, rest}
   end
 
-  defp get_unknown_varint_bytes(acc, <<1::1, b::7, rest::binary>>) do
-    get_unknown_varint_bytes(<<acc::binary, 1::1, b::7>>, rest)
+  defp get_unknown_varint_bytes(acc, <<1::1, b::7, rest::bits>>) do
+    get_unknown_varint_bytes(<<acc::bits, 1::1, b::7>>, rest)
   end
 
-  def parse_double(<<@positive_infinity_64, rest::binary>>), do: {:infinity, rest}
-  def parse_double(<<@negative_infinity_64, rest::binary>>), do: {:"-infinity", rest}
-  def parse_double(<<_::48, 0b1111::4, _::4, _::1, 0b1111111::7, rest::binary>>), do: {:nan, rest}
-  def parse_double(<<value::float-little-64, rest::binary>>), do: {value, rest}
+  def parse_double(<<@positive_infinity_64, rest::bits>>), do: {:infinity, rest}
+  def parse_double(<<@negative_infinity_64, rest::bits>>), do: {:"-infinity", rest}
+  def parse_double(<<_::48, 0b1111::4, _::4, _::1, 0b1111111::7, rest::bits>>), do: {:nan, rest}
+  def parse_double(<<value::float-little-64, rest::bits>>), do: {value, rest}
 
-  def parse_float(<<@positive_infinity_32, rest::binary>>), do: {:infinity, rest}
-  def parse_float(<<@negative_infinity_32, rest::binary>>), do: {:"-infinity", rest}
-  def parse_float(<<_::16, 1::1, _::7, _::1, 0b1111111::7, rest::binary>>), do: {:nan, rest}
-  def parse_float(<<value::float-little-32, rest::binary>>), do: {value, rest}
+  def parse_float(<<@positive_infinity_32, rest::bits>>), do: {:infinity, rest}
+  def parse_float(<<@negative_infinity_32, rest::bits>>), do: {:"-infinity", rest}
+  def parse_float(<<_::16, 1::1, _::7, _::1, 0b1111111::7, rest::bits>>), do: {:nan, rest}
+  def parse_float(<<value::float-little-32, rest::bits>>), do: {value, rest}
 
-  def parse_sfixed64(<<value::signed-little-64, rest::binary>>), do: {value, rest}
-  def parse_fixed64(<<value::signed-little-64, rest::binary>>), do: {value, rest}
-  def parse_sfixed32(<<value::signed-little-32, rest::binary>>), do: {value, rest}
-  def parse_fixed32(<<value::signed-little-32, rest::binary>>), do: {value, rest}
+  def parse_sfixed64(<<value::signed-little-64, rest::bits>>), do: {value, rest}
+  def parse_fixed64(<<value::signed-little-64, rest::bits>>), do: {value, rest}
+  def parse_sfixed32(<<value::signed-little-32, rest::bits>>), do: {value, rest}
+  def parse_fixed32(<<value::signed-little-32, rest::bits>>), do: {value, rest}
 
   def parse_bool(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     {value != 0, rest}
   end
 
   def parse_sint32(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::unsigned-native-32>> = <<value::unsigned-native-32>>
     {Zigzag.decode(res), rest}
   end
 
   def parse_sint64(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::unsigned-native-64>> = <<value::unsigned-native-64>>
     {Zigzag.decode(res), rest}
   end
 
   def parse_uint32(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::unsigned-native-32>> = <<value::unsigned-native-32>>
     {res, rest}
   end
 
   def parse_uint64(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::unsigned-native-64>> = <<value::unsigned-native-64>>
     {res, rest}
   end
 
   def parse_enum(bytes, mod) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::signed-native-32>> = <<value::signed-native-32>>
     {mod.decode(res), rest}
   end
 
   def parse_int32(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::signed-native-32>> = <<value::signed-native-32>>
     {res, rest}
   end
 
   def parse_int64(bytes) do
-    {value, rest} = Varint.decode(bytes)
+    {value, rest} = decode_varint(bytes)
     <<res::signed-native-64>> = <<value::signed-native-64>>
     {res, rest}
   end
 
   def parse_repeated_bool(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_bool(acc, bytes) do
-    {value, rest} = Protox.Varint.decode(bytes)
+  def parse_repeated_bool(acc, <<bytes::bits>>) do
+    {value, rest} = decode_varint(bytes)
     parse_repeated_bool([value != 0 | acc], rest)
   end
 
   def parse_repeated_enum(acc, <<>>, _mod), do: Enum.reverse(acc)
 
-  def parse_repeated_enum(acc, bytes, mod) do
+  def parse_repeated_enum(acc, <<bytes::bits>>, mod) do
     {value, rest} = parse_enum(bytes, mod)
     parse_repeated_enum([value | acc], rest, mod)
   end
 
   def parse_repeated_int32(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_int32(acc, bytes) do
+  def parse_repeated_int32(acc, <<bytes::bits>>) do
     {value, rest} = parse_int32(bytes)
     parse_repeated_int32([value | acc], rest)
   end
 
   def parse_repeated_uint32(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_uint32(acc, bytes) do
+  def parse_repeated_uint32(acc, <<bytes::bits>>) do
     {value, rest} = parse_uint32(bytes)
     parse_repeated_uint32([value | acc], rest)
   end
 
   def parse_repeated_sint32(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_sint32(acc, bytes) do
+  def parse_repeated_sint32(acc, <<bytes::bits>>) do
     {value, rest} = parse_sint32(bytes)
     parse_repeated_sint32([value | acc], rest)
   end
 
   def parse_repeated_int64(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_int64(acc, bytes) do
+  def parse_repeated_int64(acc, <<bytes::bits>>) do
     {value, rest} = parse_int64(bytes)
     parse_repeated_int64([value | acc], rest)
   end
 
   def parse_repeated_uint64(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_uint64(acc, bytes) do
+  def parse_repeated_uint64(acc, <<bytes::bits>>) do
     {value, rest} = parse_uint64(bytes)
     parse_repeated_uint64([value | acc], rest)
   end
 
   def parse_repeated_sint64(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_sint64(acc, bytes) do
+  def parse_repeated_sint64(acc, <<bytes::bits>>) do
     {value, rest} = parse_sint64(bytes)
     parse_repeated_sint64([value | acc], rest)
   end
 
   def parse_repeated_fixed32(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_fixed32(acc, bytes) do
+  def parse_repeated_fixed32(acc, <<bytes::bits>>) do
     {value, rest} = parse_fixed32(bytes)
     parse_repeated_fixed32([value | acc], rest)
   end
 
   def parse_repeated_fixed64(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_fixed64(acc, bytes) do
+  def parse_repeated_fixed64(acc, <<bytes::bits>>) do
     {value, rest} = parse_fixed64(bytes)
     parse_repeated_fixed64([value | acc], rest)
   end
 
   def parse_repeated_sfixed32(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_sfixed32(acc, bytes) do
+  def parse_repeated_sfixed32(acc, <<bytes::bits>>) do
     {value, rest} = parse_sfixed32(bytes)
     parse_repeated_sfixed32([value | acc], rest)
   end
 
   def parse_repeated_sfixed64(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_sfixed64(acc, bytes) do
+  def parse_repeated_sfixed64(acc, <<bytes::bits>>) do
     {value, rest} = parse_sfixed64(bytes)
     parse_repeated_sfixed64([value | acc], rest)
   end
 
   def parse_repeated_float(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_float(acc, bytes) do
+  def parse_repeated_float(acc, <<bytes::bits>>) do
     {value, rest} = parse_float(bytes)
     parse_repeated_float([value | acc], rest)
   end
 
   def parse_repeated_double(acc, <<>>), do: Enum.reverse(acc)
 
-  def parse_repeated_double(acc, bytes) do
+  def parse_repeated_double(acc, <<bytes::bits>>) do
     {value, rest} = parse_double(bytes)
     parse_repeated_double([value | acc], rest)
   end
